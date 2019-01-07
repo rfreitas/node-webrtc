@@ -12,10 +12,17 @@ function onOpen(ws) {
 }
 
 async function main() {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: true,
-    video: true
-  });
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: true
+    });
+  } catch (error) {
+    console.log(error);
+    return;
+  }
+
 
   console.log('Creating RTCPeerConnection');
   const pc = new RTCPeerConnection({
@@ -32,7 +39,7 @@ async function main() {
   }
 
   try {
-    const ws = new WebSocket('ws://localhost:8080');
+    const ws = new WebSocket('wss://localhost:8080');
     await onOpen(ws);
     ws.onclose = cleanup;
 

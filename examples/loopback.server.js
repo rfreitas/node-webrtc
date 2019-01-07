@@ -3,9 +3,10 @@
 
 const express = require('express');
 const browserify = require('browserify-middleware');
-const { createServer } = require('http');
+const { createServer } = require('https');
 const { join } = require('path');
 const { Server } = require('ws');
+const pem = require('pem');
 
 const { RTCPeerConnection } = require('..');
 const { getOffer, onCandidate } = require('./loopback.common');
@@ -16,79 +17,94 @@ app.get('/loopback.client.js', browserify(join(__dirname, 'loopback.client.js'))
 
 app.use(express.static(__dirname));
 
-const server = createServer(app);
+pem.createCertificate({ days: 1, selfSigned: true }, function(err, keys) {
+  if (err) {
+    throw err;
+  }
+  const server = createServer(
+    { key: keys.serviceKey, cert: keys.certificate },
+    app
+  );
 
-server.listen(8080, () => {
-  const address = server.address();
-  console.log(`Server running at ${address.port}`);
-});
-
-let i = 0;
-
-new Server({ server }).on('connection', async ws => {
-  const n = i++;
-
-  console.log(`${n}: Creating new RTCPeerConnection`);
-
-  const pc = new RTCPeerConnection({
-    bundlePolicy: 'max-bundle',
-    rtcpMuxPolicy: 'require'
+  server.listen(8080, () => {
+    const address = server.address();
+    console.log(`Server running at ${address.port}`);
   });
 
-  pc.onicecandidate = ({ candidate }) => {
-    if (candidate) {
-      console.log(`${n}: Sending ICE candidate`);
-      ws.send(JSON.stringify({
-        type: 'candidate',
-        candidate
-      }));
-    }
-  };
+  let i = 0;
 
-  pc.ontrack = ({ track, streams }) => {
-    console.log(`${n}: Received ${track.kind} MediaStreamTrack with ID ${track.id}`);
-    pc.addTrack(track, ...streams);
-  };
+  new Server({ server }).on('connection', async ws => {
+    const n = i++;
 
-  let queuedCandidates = [];
-  onCandidate(ws, async candidate => {
-    if (!pc.remoteDescription) {
-      queuedCandidates.push(candidate);
-      return;
-    }
-    console.log(`${n}: Adding ICE candidate`);
-    await pc.addIceCandidate(candidate);
-    console.log(`${n}: Added ICE candidate`);
-  });
+    console.log(`${n}: Creating new RTCPeerConnection`);
 
-  ws.once('close', () => {
-    console.log(`${n}: Closing RTCPeerConnection`);
-    pc.close();
-  });
+    const pc = new RTCPeerConnection({
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require'
+    });
 
-  try {
-    console.log(`${n}: Waiting for offer`);
-    const offer = await getOffer(ws);
+    pc.onicecandidate = ({ candidate }) => {
+      if (candidate) {
+        console.log(`${n}: Sending ICE candidate`);
+        ws.send(JSON.stringify({
+          type: 'candidate',
+          candidate
+        }));
+      }
+    };
 
-    console.log(`${n}: Received offer; setting remote description`);
-    await pc.setRemoteDescription(offer);
+    pc.ontrack = ({ track, streams }) => {
+      console.log(`${n}: Received ${track.kind} MediaStreamTrack with ID ${track.id} ${track.active()}`);
 
-    console.log(`${n}: Set remote description; creating answer`);
-    const answer = await pc.createAnswer();
+      track.onchanged = ()=>{ console.log('track changed'); };
 
-    console.log(`${n}: Created answer; setting local description`);
-    await pc.setLocalDescription(answer);
+      if (track.kind === 'video') {
+        console.log(track.OnChanged);
+      }
+      pc.addTrack(track, ...streams);
+    };
 
-    console.log(`${n}: Set local description; sending answer`);
-    ws.send(JSON.stringify(answer));
-
-    await Promise.all(queuedCandidates.splice(0).map(async candidate => {
+    let queuedCandidates = [];
+    onCandidate(ws, async candidate => {
+      if (!pc.remoteDescription) {
+        queuedCandidates.push(candidate);
+        return;
+      }
       console.log(`${n}: Adding ICE candidate`);
       await pc.addIceCandidate(candidate);
       console.log(`${n}: Added ICE candidate`);
-    }));
-  } catch (error) {
-    console.error(error.stack || error.message || error);
-    ws.close();
-  }
+    });
+
+    ws.once('close', () => {
+      console.log(`${n}: Closing RTCPeerConnection`);
+      pc.close();
+    });
+
+    try {
+      console.log(`${n}: Waiting for offer`);
+      const offer = await getOffer(ws);
+
+      console.log(`${n}: Received offer; setting remote description`);
+      await pc.setRemoteDescription(offer);
+
+      console.log(`${n}: Set remote description; creating answer`);
+      const answer = await pc.createAnswer();
+
+      console.log(`${n}: Created answer; setting local description`);
+      await pc.setLocalDescription(answer);
+
+      console.log(`${n}: Set local description; sending answer`);
+      ws.send(JSON.stringify(answer));
+
+      await Promise.all(queuedCandidates.splice(0).map(async candidate => {
+        console.log(`${n}: Adding ICE candidate`);
+        await pc.addIceCandidate(candidate);
+        console.log(`${n}: Added ICE candidate`);
+      }));
+    } catch (error) {
+      console.error(error.stack || error.message || error);
+      ws.close();
+    }
+  });
+
 });
