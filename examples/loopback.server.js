@@ -45,9 +45,13 @@ new Server({ server }).on('connection', async ws => {
     }
   };
 
-  pc.ontrack = ({ track, streams }) => {
-    console.log(`${n}: Received ${track.kind} MediaStreamTrack with ID ${track.id}`);
-    pc.addTrack(track, ...streams);
+  pc.onencodedvideoframe = (videoFrameEvent) => {
+    console.log('on video frame')
+  }
+
+  pc.onaddstream = (stream) => {
+    console.log(stream)
+    pc.addStream(stream.stream);
   };
 
   let queuedCandidates = [];
