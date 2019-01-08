@@ -45,13 +45,12 @@ new Server({ server }).on('connection', async ws => {
     }
   };
 
-  pc.onencodedvideoframe = (videoFrameEvent) => {
-    console.log('on video frame')
-  }
-
   pc.onaddstream = (stream) => {
-    console.log(stream)
+    console.log(stream, stream.stream.getTracks())
     pc.addStream(stream.stream);
+    pc.onStreamEncodedVideoFrame(stream.stream, (frame)=> {
+      console.log(frame)
+    })
   };
 
   let queuedCandidates = [];
