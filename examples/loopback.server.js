@@ -38,16 +38,18 @@ new Server({ server }).on('connection', async ws => {
   pc.onicecandidate = ({ candidate }) => {
     if (candidate) {
       console.log(`${n}: Sending ICE candidate`);
+      /*
       ws.send(JSON.stringify({
         type: 'candidate',
         candidate
       }));
+      */
     }
   };
 
   pc.onaddstream = (stream) => {
     console.log(stream, stream.stream.getTracks())
-    pc.addStream(stream.stream);
+    //pc.addStream(stream.stream);
     pc.onStreamEncodedVideoFrame(stream.stream, (frame)=> {
       console.log(frame)
     })
